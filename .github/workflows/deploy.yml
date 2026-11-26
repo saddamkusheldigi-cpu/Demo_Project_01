@@ -86,28 +86,22 @@ jobs:
           name: little-list-deployment
           path: ${{ runner.temp }}/little-list-deployment
       - name: Create deployment environment file
-        env:
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-          PGADMIN_DEFAULT_EMAIL: ${{ secrets.PGADMIN_DEFAULT_EMAIL }}
-          PGADMIN_DEFAULT_PASSWORD: ${{ secrets.PGADMIN_DEFAULT_PASSWORD }}
         run: |
           set -euo pipefail
-          if [[ -z "$POSTGRES_PASSWORD" || -z "$PGADMIN_DEFAULT_EMAIL" || -z "$PGADMIN_DEFAULT_PASSWORD" ]]; then
-            echo "Configure POSTGRES_PASSWORD, PGADMIN_DEFAULT_EMAIL, and PGADMIN_DEFAULT_PASSWORD repository secrets."
-            exit 1
-          fi
-          if [[ ! "$POSTGRES_PASSWORD" =~ ^[A-Za-z0-9_-]+$ || ! "$PGADMIN_DEFAULT_PASSWORD" =~ ^[A-Za-z0-9_-]+$ ]]; then
-            echo "Passwords must contain only letters, numbers, underscores, and hyphens."
-            exit 1
-          fi
           runner_user="$(id -un)"
           runner_group="$(id -gn)"
           sudo -n install -d -o "$runner_user" -g "$runner_group" -m 700 /etc/little-list
-          umask 077
-          printf 'POSTGRES_PASSWORD=%s\nPGADMIN_DEFAULT_EMAIL=%s\nPGADMIN_DEFAULT_PASSWORD=%s\n' \
-            "$POSTGRES_PASSWORD" "$PGADMIN_DEFAULT_EMAIL" "$PGADMIN_DEFAULT_PASSWORD" \
-            > /etc/little-list/.env
-          chmod 600 /etc/little-list/.env
+          if [[ ! -s /etc/little-list/.env ]]; then
+            postgres_password="$(openssl rand -hex 32)"
+            pgadmin_password="$(openssl rand -hex 32)"
+            umask 077
+            printf 'POSTGRES_PASSWORD=%s\nPGADMIN_DEFAULT_EMAIL=admin@example.com\nPGADMIN_DEFAULT_PASSWORD=%s\n' \
+              "$postgres_password" "$pgadmin_password" > /etc/little-list/.env
+            chmod 600 /etc/little-list/.env
+            echo "Generated database and pgAdmin credentials in /etc/little-list/.env."
+          else
+            echo "Using existing credentials in /etc/little-list/.env."
+          fi
       - name: Load image and deploy
         env:
           APP_IMAGE: little-list:${{ github.sha }}

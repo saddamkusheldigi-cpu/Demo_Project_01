@@ -42,19 +42,15 @@ image, then deploys it to a Linux machine with a self-hosted GitHub Actions runn
 Deployments run from pushes to `main`.
 
 On the Linux machine, install Docker Compose and register a self-hosted runner with
-the `linux` and `x64` labels. The runner needs Docker access and non-interactive
-`sudo` permission to create `/etc/little-list`. In the GitHub repository, add these
-Actions secrets under **Settings → Secrets and variables → Actions**:
-
-- `POSTGRES_PASSWORD`
-- `PGADMIN_DEFAULT_EMAIL`
-- `PGADMIN_DEFAULT_PASSWORD`
-
-Use passwords containing only letters, numbers, underscores, and hyphens. The
-deploy job creates `/etc/little-list/.env` with restrictive permissions from these
-secrets. Add `.github/workflows/deploy.yml` to the repository. The workflow does not
-delete database volumes, so PostgreSQL data persists across deployments. The app is
-exposed on port 3000; PostgreSQL and pgAdmin are bound to localhost by default.
+the `linux` and `x64` labels. The runner needs Docker access, non-interactive `sudo`
+permission to create `/etc/little-list`, and `openssl` installed. On first deploy,
+the workflow generates database and pgAdmin passwords and stores them in
+`/etc/little-list/.env` with restrictive permissions. To sign in to pgAdmin, read
+the generated credentials on the Linux machine with `sudo cat /etc/little-list/.env`.
+The workflow keeps this file on subsequent deploys so database credentials remain
+stable. It does not delete database volumes, so PostgreSQL data persists across
+deployments. The app is exposed on port 3000; PostgreSQL and pgAdmin are bound to
+localhost by default.
 
 ## API
 
