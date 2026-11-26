@@ -103,6 +103,24 @@ jobs:
           else
             echo "Using existing credentials in $env_file."
           fi
+          if ! grep -q '^APP_PORT=' "$env_file"; then
+            app_port=""
+            for candidate in $(seq 3000 3100); do
+              if [[ -z "$(docker ps --quiet --filter "publish=$candidate")" ]] &&
+                ! ss -H -ltn "sport = :$candidate" | grep -q .; then
+                app_port="$candidate"
+                break
+              fi
+            done
+            if [[ -z "$app_port" ]]; then
+              echo "No free app port found between 3000 and 3100." >&2
+              exit 1
+            fi
+            printf 'APP_PORT=%s\n' "$app_port" >> "$env_file"
+            echo "Selected app host port $app_port and saved it in $env_file."
+          else
+            echo "Reusing app host port $(sed -n 's/^APP_PORT=//p' "$env_file")."
+          fi
       - name: Load image and deploy
         env:
           APP_IMAGE: little-list:${{ github.sha }}

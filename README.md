@@ -48,8 +48,9 @@ them with restrictive permissions in `~/.config/little-list/.env` under the runn
 user's home directory. To sign in to pgAdmin, read the credentials on Linux with
 `cat ~/.config/little-list/.env` as that user. The workflow reuses this file on later
 deploys so database credentials remain stable. It does not delete database volumes,
-so PostgreSQL data persists across deployments. The app is exposed on port 3000;
-PostgreSQL and pgAdmin are bound to localhost by default.
+so PostgreSQL data persists across deployments. The workflow selects a free app host
+port from 3000–3100 and records it as `APP_PORT` in that file. PostgreSQL and pgAdmin
+are bound to localhost by default.
 
 ## API
 
