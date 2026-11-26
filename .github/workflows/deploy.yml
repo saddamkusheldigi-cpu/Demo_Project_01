@@ -88,19 +88,20 @@ jobs:
       - name: Create deployment environment file
         run: |
           set -euo pipefail
-          runner_user="$(id -un)"
-          runner_group="$(id -gn)"
-          sudo -n install -d -o "$runner_user" -g "$runner_group" -m 700 /etc/little-list
-          if [[ ! -s /etc/little-list/.env ]]; then
+          env_dir="$HOME/.config/little-list"
+          env_file="$env_dir/.env"
+          mkdir -p "$env_dir"
+          chmod 700 "$env_dir"
+          if [[ ! -s "$env_file" ]]; then
             postgres_password="$(openssl rand -hex 32)"
             pgadmin_password="$(openssl rand -hex 32)"
             umask 077
             printf 'POSTGRES_PASSWORD=%s\nPGADMIN_DEFAULT_EMAIL=admin@example.com\nPGADMIN_DEFAULT_PASSWORD=%s\n' \
-              "$postgres_password" "$pgadmin_password" > /etc/little-list/.env
-            chmod 600 /etc/little-list/.env
-            echo "Generated database and pgAdmin credentials in /etc/little-list/.env."
+              "$postgres_password" "$pgadmin_password" > "$env_file"
+            chmod 600 "$env_file"
+            echo "Generated database and pgAdmin credentials in $env_file."
           else
-            echo "Using existing credentials in /etc/little-list/.env."
+            echo "Using existing credentials in $env_file."
           fi
       - name: Load image and deploy
         env:
@@ -111,5 +112,5 @@ jobs:
           docker compose \
             --project-directory "$GITHUB_WORKSPACE" \
             --project-name little-list \
-            --env-file /etc/little-list/.env \
+            --env-file "$HOME/.config/little-list/.env" \
             up --detach --no-build --remove-orphans
