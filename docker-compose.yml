@@ -1,0 +1,48 @@
+services:
+  app:
+    build: .
+    image: ${APP_IMAGE:-little-list:local}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      DATABASE_HOST: database
+      DATABASE_PORT: 5432
+      DATABASE_NAME: little_list
+      DATABASE_USER: little_list
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-little_list_password}
+    depends_on:
+      database:
+        condition: service_healthy
+
+  database:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: little_list
+      POSTGRES_USER: little_list
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-little_list_password}
+    ports:
+      - "${DATABASE_BIND_ADDRESS:-127.0.0.1}:${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - little-list-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U little_list -d little_list"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  pgadmin:
+    image: dpage/pgadmin4:9
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-local-dev-password}
+    ports:
+      - "${PGADMIN_BIND_ADDRESS:-127.0.0.1}:${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - little-list-pgadmin:/var/lib/pgadmin
+    depends_on:
+      database:
+        condition: service_healthy
+
+volumes:
+  little-list-postgres:
+  little-list-pgadmin:

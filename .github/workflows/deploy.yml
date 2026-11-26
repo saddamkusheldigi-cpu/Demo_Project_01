@@ -1,0 +1,121 @@
+name: Build, test, package, deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --check server.js
+      - name: Build Docker image
+        run: docker build --tag "little-list:$GITHUB_SHA" .
+      - name: Save Docker image
+        run: docker save --output little-list-image.tar "little-list:$GITHUB_SHA"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: little-list-image
+          path: little-list-image.tar
+          retention-days: 1
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: little_list
+          POSTGRES_USER: little_list
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U little_list -d little_list"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 5432
+      DATABASE_NAME: little_list
+      DATABASE_USER: little_list
+      DATABASE_PASSWORD: test_password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  package:
+    needs: [build, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: little-list-image
+      - name: Create deployment package
+        run: tar -czf little-list-deployment.tar.gz little-list-image.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: little-list-deployment
+          path: little-list-deployment.tar.gz
+          retention-days: 1
+
+  deploy:
+    needs: package
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: little-list-deployment
+          path: ${{ runner.temp }}/little-list-deployment
+      - name: Create deployment environment file
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          PGADMIN_DEFAULT_EMAIL: ${{ secrets.PGADMIN_DEFAULT_EMAIL }}
+          PGADMIN_DEFAULT_PASSWORD: ${{ secrets.PGADMIN_DEFAULT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$POSTGRES_PASSWORD" || -z "$PGADMIN_DEFAULT_EMAIL" || -z "$PGADMIN_DEFAULT_PASSWORD" ]]; then
+            echo "Configure POSTGRES_PASSWORD, PGADMIN_DEFAULT_EMAIL, and PGADMIN_DEFAULT_PASSWORD repository secrets."
+            exit 1
+          fi
+          if [[ ! "$POSTGRES_PASSWORD" =~ ^[A-Za-z0-9_-]+$ || ! "$PGADMIN_DEFAULT_PASSWORD" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "Passwords must contain only letters, numbers, underscores, and hyphens."
+            exit 1
+          fi
+          runner_user="$(id -un)"
+          runner_group="$(id -gn)"
+          sudo -n install -d -o "$runner_user" -g "$runner_group" -m 700 /etc/little-list
+          umask 077
+          printf 'POSTGRES_PASSWORD=%s\nPGADMIN_DEFAULT_EMAIL=%s\nPGADMIN_DEFAULT_PASSWORD=%s\n' \
+            "$POSTGRES_PASSWORD" "$PGADMIN_DEFAULT_EMAIL" "$PGADMIN_DEFAULT_PASSWORD" \
+            > /etc/little-list/.env
+          chmod 600 /etc/little-list/.env
+      - name: Load image and deploy
+        env:
+          APP_IMAGE: little-list:${{ github.sha }}
+        run: |
+          tar -xzf "$RUNNER_TEMP/little-list-deployment/little-list-deployment.tar.gz" -C "$RUNNER_TEMP/little-list-deployment"
+          docker load --input "$RUNNER_TEMP/little-list-deployment/little-list-image.tar"
+          docker compose \
+            --project-directory "$GITHUB_WORKSPACE" \
+            --project-name little-list \
+            --env-file /etc/little-list/.env \
+            up --detach --no-build --remove-orphans
